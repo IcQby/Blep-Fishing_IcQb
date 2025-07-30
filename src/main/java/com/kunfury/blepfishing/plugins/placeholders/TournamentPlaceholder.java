@@ -47,7 +47,7 @@ public class TournamentPlaceholder extends  Placeholder{
             }
         }
 
-        var tournamentType = TournamentType.FromId(tourneyTypeId);
+        TournamentType tournamentType = TournamentType.FromId(tourneyTypeId);
         assert tournamentType != null;
         return getTournamentTypeInfo(tournamentType, args);
     }
@@ -60,9 +60,6 @@ public class TournamentPlaceholder extends  Placeholder{
     private String getTournamentInfo(TournamentObject tournament, String[] args) {
 
         String property = args[2];
-
-        if(args.length >= 3) property = args[2];
-
 
         return switch (property.toUpperCase()) {
             case "NAME" -> Formatting.GetLanguageString("PAPI.Tournament.name")
@@ -93,7 +90,7 @@ public class TournamentPlaceholder extends  Placeholder{
             }
             default -> Formatting.GetLanguageString("PAPI.Tournament.default")
                     .replace("{name}", tournament.getType().Name)
-                    .replace("{fish}", Formatting.ToCommaList(tournament.getType().getFormattedCatchList(), ChatColor.BLUE, ChatColor.WHITE))
+                    .replace("{fish}", String.valueOf(tournament.getType().getFishTypes().size()))
                     .replace("{time}", Formatting.asTime(tournament.getTimeRemaining()))
                     .replace("{progress}", Formatting.DoubleFormat(tournament.getProgress() * 100));
         };
@@ -113,6 +110,7 @@ public class TournamentPlaceholder extends  Placeholder{
                     .replace("{name}", Formatting.formatColor(tournamentType.Name));
             case "FISH_TYPE" -> Formatting.GetLanguageString("PAPI.Tournament.fish_type")
                     .replace("{fish}", Formatting.ToCommaList(tournamentType.getFormattedCatchList(), ChatColor.BLUE, ChatColor.WHITE));
+            case "TIME", "PROGRESS", "WINNER" -> Formatting.GetLanguageString("PAPI.Tournament.notRunning");
             default -> Formatting.GetLanguageString("PAPI.Tournament.default")
                     .replace("{tournament}", tournamentType.Name)
                     .replace("{fish}", Formatting.ToCommaList(tournamentType.getFormattedCatchList(), ChatColor.BLUE, ChatColor.WHITE))

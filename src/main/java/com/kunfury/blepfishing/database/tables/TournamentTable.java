@@ -209,6 +209,8 @@ public class TournamentTable extends DbTable<TournamentObject> {
 
             //TODO: Need to check for "ANY" or "ALL" type fish
 
+            sql.append(" AND playerId IS NOT NULL AND playerId != \"\"");
+
             sql.append(" AND dateCaught BETWEEN ").append(startTime).append(" AND ").append(currentTime);
 
             switch (tournament.getType().Grading) {

@@ -12,6 +12,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
+import org.bukkit.entity.Display;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -141,8 +142,11 @@ public class TournamentObject {
     }
 
     public void DisableBossBar(){
-        if(bossBar != null)
-            bossBar.removeAll();
+        if(bossBar == null)
+            return;
+
+        bossBar.removeAll();
+        bossBar.setVisible(false);
     }
 
 
@@ -211,8 +215,8 @@ public class TournamentObject {
         active = false;
         Database.Tournaments.Update(Id, "active", false);
 
-        if(bossBar != null)
-            bossBar.removeAll();
+        DisableBossBar();
+
     }
 
     public void Finish(){
@@ -222,8 +226,7 @@ public class TournamentObject {
         active = false;
         Database.Tournaments.Update(Id, "active", false);
 
-        if(bossBar != null)
-            bossBar.removeAll();
+       DisableBossBar();
 
         List<FishObject> winningFish = getWinningFish();
 

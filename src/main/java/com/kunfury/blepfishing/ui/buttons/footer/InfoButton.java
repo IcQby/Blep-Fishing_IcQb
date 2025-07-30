@@ -19,7 +19,7 @@ public class InfoButton extends MenuButton {
 
     @Override
     public ItemStack buildItemStack(Player player) {
-        ItemStack item = new ItemStack(Material.GUSTER_BANNER_PATTERN);
+        ItemStack item = new ItemStack(Material.CREEPER_BANNER_PATTERN);
 
         ItemMeta m = item.getItemMeta();
         assert m != null;
