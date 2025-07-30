@@ -134,8 +134,11 @@ public class FishTable extends DbTable<FishObject>{
                         "SELECT COUNT(*) AS total FROM fish WHERE playerId = ?");
                 preparedStatement.setString(1, playerId);
             }else
-                preparedStatement = connection.prepareStatement(
-                        "SELECT COUNT(*) AS total FROM fish");
+            {
+                preparedStatement = connection.prepareStatement("SELECT COUNT(*) AS total FROM fish WHERE playerId IS NOT NULL AND playerId != \"\"");
+            }
+
+
 
 
             ResultSet resultSet = preparedStatement.executeQuery();
