@@ -8,7 +8,10 @@ import org.apache.commons.lang.BooleanUtils;
 import org.bukkit.Bukkit;
 
 import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +47,9 @@ public class TournamentTable extends DbTable<TournamentObject> {
             var id = connection.prepareStatement("SELECT * FROM tournaments ORDER BY id DESC LIMIT 1").executeQuery().getInt("id");
             Cache.put(id, tourney);
 
+            if(!ActiveTournaments.isEmpty())
+                ActiveTournaments = null;
+
             return id;
 
         } catch (SQLException e) {
@@ -70,7 +76,12 @@ public class TournamentTable extends DbTable<TournamentObject> {
                 return null;
             }
 
-            return new TournamentObject(resultSet);
+            var tournament = new TournamentObject(resultSet);
+
+            if(tournament.Active())
+                ActiveTournaments.clear();
+
+            return tournament;
 
         }catch (SQLException e){
             throw new RuntimeException(e);
@@ -92,6 +103,10 @@ public class TournamentTable extends DbTable<TournamentObject> {
             preparedStatement.setInt(2, id);
             preparedStatement.executeUpdate();
 
+            if(field.equalsIgnoreCase("active"))
+                ActiveTournaments = null;//Ensures Active Tournaments are kept up to date
+
+
 
         }catch (SQLException e){
             throw new RuntimeException(e);
@@ -111,8 +126,15 @@ public class TournamentTable extends DbTable<TournamentObject> {
         }
     }
 
+    List<TournamentObject> ActiveTournaments = null;
     public List<TournamentObject> GetActive(){
-        List<TournamentObject> activeTournaments = new ArrayList<>();
+
+        if(ActiveTournaments != null)
+            return ActiveTournaments;
+
+        ActiveTournaments = new ArrayList<>();
+
+        //Bukkit.broadcastMessage(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + " - Checking Active Tournaments");//test
 
         try{
             PreparedStatement preparedStatement = connection.prepareStatement(
@@ -126,7 +148,7 @@ public class TournamentTable extends DbTable<TournamentObject> {
                 var id = resultSet.getInt("id");
 
                 if(Cache.containsKey(id)){
-                    activeTournaments.add(Cache.get(id));
+                    ActiveTournaments.add(Cache.get(id));
                     continue;
                 }
 
@@ -134,13 +156,13 @@ public class TournamentTable extends DbTable<TournamentObject> {
                 var tournament = new TournamentObject(resultSet);
                 if(tournament.getType() != null){
                     Cache.put(id, tournament);
-                    activeTournaments.add(tournament);
+                    ActiveTournaments.add(tournament);
                     //Ensures the Tournament Type is valid
                 }
 
             }
 
-            return activeTournaments;
+            return ActiveTournaments;
         }catch (SQLException e){
             throw new RuntimeException(e);
         }
