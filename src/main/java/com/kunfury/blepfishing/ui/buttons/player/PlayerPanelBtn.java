@@ -9,20 +9,27 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import net.kyori.adventure.text.Component;
+
 
 public class PlayerPanelBtn extends MenuButton {
+
     @Override
     public ItemStack buildItemStack(Player player) {
+        // Create the base item
         ItemStack item = new ItemStack(Material.SALMON);
-        ItemMeta m = item.getItemMeta();
-        assert m != null;
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item; // safety check
 
-        m.setDisplayName(Formatting.GetLanguageString("UI.Player.Buttons.panel"));
+        // Set the display name
+        meta.displayName(Formatting.nameHandler("UI.Player.Buttons.panel"));
 
-        m.addEnchant(Enchantment.FORTUNE, 1, true);
-        m.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+        // Apply cosmetic glow safely
+        meta.addUnsafeEnchantment(Enchantment.FORTUNE, 1);
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
 
-        item.setItemMeta(m);
+        // Apply meta back to item
+        item.setItemMeta(meta);
 
         return item;
     }
