@@ -21,13 +21,12 @@ import java.nio.channels.NotYetBoundException;
 import java.time.LocalDateTime;
 import java.util.*;
 
-public class CompassPiece extends TreasureType{
+public class CompassPiece extends TreasureType {
 
     public static List<FishingArea> CompassAreas;
 
     public CompassPiece(String id, int weight, boolean announce) {
         super(id, weight, announce);
-
         CompassAreas = FishingArea.GetAll().stream()
                 .filter(a -> a.HasCompassPiece)
                 .toList();
@@ -39,13 +38,13 @@ public class CompassPiece extends TreasureType{
     }
 
     @Override
-    public boolean CanGenerate(Player player){
+    public boolean CanGenerate(Player player) {
         return true;
     }
 
     @Override
     protected void Use(ItemStack item, Player player) {
-        //TODO: Implement focusing towards the next piece
+        // TODO: Implement focusing towards the next piece
     }
 
     @Override
@@ -54,105 +53,104 @@ public class CompassPiece extends TreasureType{
     }
 
     @Override
-    public ItemStack GetItem(PlayerFishEvent e){
-
-        var player = e.getPlayer();
+    public ItemStack GetItem(PlayerFishEvent e) {
+        Player player = e.getPlayer();
 
         List<FishingArea> fishingAreas = FishingArea.GetAvailableAreas(e.getHook().getLocation()).stream()
                 .filter(a -> a.HasCompassPiece)
                 .filter(a -> !HasPiece(player, a))
                 .toList();
 
-        if(fishingAreas.isEmpty())
-            return null;
+        if (fishingAreas.isEmpty()) return null;
 
-        var area = fishingAreas.get(0);
+        FishingArea area = fishingAreas.get(0);
 
-        Database.TreasureDrops.Add(new TreasureDrop
-                ("compassPiece." + area.Id, player.getUniqueId().toString(), LocalDateTime.now()));
+        Database.TreasureDrops.Add(new TreasureDrop(
+                "compassPiece." + area.Id,
+                player.getUniqueId().toString(),
+                LocalDateTime.now()
+        ));
 
         return GeneratePiece(new FishingArea[]{area});
     }
 
+    /**
+     * Checks if the player already has a compass piece for a specific area.
+     * Null-safe and logs problematic items.
+     */
+    private boolean HasPiece(Player player, FishingArea area) {
+        if (!player.getInventory().contains(Material.PRISMARINE_SHARD)) return false;
 
-    //Checks if user has the compass piece already
-    private boolean HasPiece(Player player, FishingArea area){
-        if(!player.getInventory().contains(Material.PRISMARINE_SHARD))
-            return false;
+        for (ItemStack item : player.getInventory()) {
+            if (item == null || item.getType() != Material.PRISMARINE_SHARD) continue;
+            if (!ItemHandler.hasTag(item, ItemHandler.FishAreaId)) continue;
 
-        for(var item : player.getInventory()){
-            if(item == null || item.getType() != Material.PRISMARINE_SHARD || !ItemHandler.hasTag(item, ItemHandler.FishAreaId))
-                continue;
+            String areaIdArray = ItemHandler.getTagString(item, ItemHandler.FishAreaId);
+            if (areaIdArray == null || areaIdArray.isEmpty()) continue;
 
-            var areaIdArray = ItemHandler.getTagString(item, ItemHandler.FishAreaId);
-            for(var areaId : areaIdArray.split(", ")){
-                var a = FishingArea.FromId(areaId);
-                if(area == null){
-                    Utilities.Severe("Invalid Area ID found in compass piece");
+            for (String areaId : areaIdArray.split(",\\s*")) {
+                FishingArea a = FishingArea.FromId(areaId);
+                if (a == null) {
+                    Utilities.Severe("Invalid Area ID in compass piece: " + areaId + " (player: " + player.getName() + ")");
                     continue;
                 }
-                if(area == a)
-                    return true;
+                if (area.equals(a)) return true;
             }
         }
-
         return false;
     }
 
-    public static ItemStack GeneratePiece(FishingArea[] areas){
+    public static ItemStack GeneratePiece(FishingArea[] areas) {
         ItemStack item = new ItemStack(Material.PRISMARINE_SHARD);
-        ItemMeta itemMeta = item.getItemMeta();
-
-        assert itemMeta != null;
-
-        StringBuilder areaIds = new StringBuilder();
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) return item;
 
         List<String> lore = new ArrayList<>();
+        StringBuilder areaIds = new StringBuilder();
 
-        for(var a : areas){
+        for (FishingArea a : areas) {
             lore.add(ChatColor.YELLOW + a.Name);
-
-            if(!areaIds.isEmpty())
-                areaIds.append(", ");
+            if (areaIds.length() > 0) areaIds.append(", ");
             areaIds.append(a.Id);
         }
 
         String title;
-        if(areas.length == 1)
+        if (areas.length == 1) {
             title = Formatting.GetLanguageString("Treasure.Compass Piece.name");
-        else{
+        } else {
             title = Formatting.GetLanguageString("Treasure.Compass Piece.nameMulti")
                     .replace("{amount}", String.valueOf(areas.length))
                     .replace("{total}", String.valueOf(FishingArea.GetCompassAreas().size()));
         }
 
-        itemMeta.getPersistentDataContainer().set(ItemHandler.TreasureTypeId, PersistentDataType.STRING, "compassPiece");
-        itemMeta.getPersistentDataContainer().set(ItemHandler.FishAreaId, PersistentDataType.STRING, areaIds.toString());
-        itemMeta.setDisplayName(title);
+        meta.displayName(Formatting.nameHandler(title));
+        meta.lore(lore);
+        meta.getPersistentDataContainer().set(ItemHandler.TreasureTypeId, PersistentDataType.STRING, "compassPiece");
+        meta.getPersistentDataContainer().set(ItemHandler.FishAreaId, PersistentDataType.STRING, areaIds.toString());
 
-        itemMeta.setLore(lore);
+        // Cosmetic glow
+        meta.addUnsafeEnchantment(Enchantment.LUCK_OF_THE_SEA, 1);
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
 
-        item.setItemMeta(itemMeta);
-
-        return  item;
+        item.setItemMeta(meta);
+        return item;
     }
 
-    public static ItemStack GenerateCompass(){
+    public static ItemStack GenerateCompass() {
         ItemStack compassItem = new ItemStack(Material.COMPASS);
-
         CompassMeta compassMeta = (CompassMeta) compassItem.getItemMeta();
-        assert compassMeta != null;
+        if (compassMeta == null) return compassItem;
 
-        compassMeta.setDisplayName(Formatting.GetLanguageString("Treasure.Compass.name"));
+        compassMeta.displayName(Formatting.nameHandler("Treasure.Compass.name"));
 
         List<String> lore = new ArrayList<>();
-
         lore.add(Formatting.GetLanguageString("Treasure.Compass.lore"));
         lore.add("");
         lore.add(Formatting.GetLanguageString("Treasure.Compass.use"));
+        compassMeta.lore(lore);
 
-        compassMeta.setLore(lore);
-        compassMeta.addEnchant(Enchantment.LUCK_OF_THE_SEA, 1, false);
+        // Cosmetic glow
+        compassMeta.addUnsafeEnchantment(Enchantment.LUCK_OF_THE_SEA, 1);
         compassMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
 
         compassMeta.getPersistentDataContainer().set(ItemHandler.CompassKey, PersistentDataType.INTEGER, -1);
@@ -161,63 +159,57 @@ public class CompassPiece extends TreasureType{
         return compassItem;
     }
 
-    public static void FocusCompass(ItemStack compassItem){
+    public static void FocusCompass(ItemStack compassItem) {
         CompassMeta compassMeta = (CompassMeta) compassItem.getItemMeta();
-        assert compassMeta != null;
+        if (compassMeta == null) return;
 
         int compassId = ItemHandler.getTagInt(compassItem, ItemHandler.CompassKey);
-
         Location allBlueLoc = Database.AllBlues.Get(compassId);
 
-        if(allBlueLoc == null){
+        if (allBlueLoc == null) {
             Utilities.Severe("Tried to Focus Compass with invalid All Blue");
             return;
         }
 
-        if(allBlueLoc.getBlock().getType() != Material.LODESTONE)
+        if (allBlueLoc.getBlock().getType() != Material.LODESTONE)
             allBlueLoc.getBlock().setType(Material.LODESTONE);
 
         compassMeta.setLodestone(allBlueLoc);
-
         compassItem.setItemMeta(compassMeta);
     }
 
-    public static ItemStack Combine(ItemStack[] craftComponents){
+    public static ItemStack Combine(ItemStack[] craftComponents) {
         List<FishingArea> areas = new ArrayList<>();
-        for(var item : craftComponents){
-            if(item == null)
-                continue;
-            var areaIdArray = ItemHandler.getTagString(item, ItemHandler.FishAreaId);
-            if(areaIdArray.isEmpty())
-                return null;
+        for (ItemStack item : craftComponents) {
+            if (item == null) continue;
 
-            for(var areaId : areaIdArray.split(", ")){
-                var area = FishingArea.FromId(areaId);
-                if(area == null){
-                    Utilities.Severe("Invalid Area ID found in compass piece");
+            String areaIdArray = ItemHandler.getTagString(item, ItemHandler.FishAreaId);
+            if (areaIdArray == null || areaIdArray.isEmpty()) return null;
+
+            for (String areaId : areaIdArray.split(",\\s*")) {
+                FishingArea a = FishingArea.FromId(areaId);
+                if (a == null) {
+                    Utilities.Severe("Invalid Area ID found in compass piece: " + areaId);
                     return null;
                 }
-                if(!areas.contains(area))
-                    areas.add(area);
+                if (!areas.contains(a)) areas.add(a);
             }
         }
 
-        if(new HashSet<>(areas).containsAll(CompassAreas))
+        if (new HashSet<>(areas).containsAll(CompassAreas))
             return GenerateCompass();
 
-        if(areas.size() <= 1) //Ensures pieces are actually being combined
-            return null;
-
+        if (areas.size() <= 1) return null; // ensures pieces are actually being combined
 
         return GeneratePiece(areas.toArray(new FishingArea[0]));
     }
 
-    public static boolean IsPiece(ItemStack item){
+    public static boolean IsPiece(ItemStack item) {
         return item != null && item.getType() == Material.PRISMARINE_SHARD
                 && ItemHandler.hasTag(item, ItemHandler.FishAreaId);
     }
 
-    public static boolean isCompass(ItemStack item){
+    public static boolean isCompass(ItemStack item) {
         return item != null && item.getType() == Material.COMPASS
                 && ItemHandler.hasTag(item, ItemHandler.CompassKey);
     }
