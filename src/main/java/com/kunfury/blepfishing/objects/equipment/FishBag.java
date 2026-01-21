@@ -528,10 +528,17 @@ public class FishBag {
         );
     }
 
-    /**
+ /**
      * Get the bag ID from an ItemStack.
      */
     public static Integer GetId(ItemStack bag) {
         return ItemHandler.getTagInt(bag, ItemHandler.FishBagId);
+    }
+
+    // Add this to fix the GetRecipeItem() call
+    public FishBag() {
+        this.Id = -1;
+        this.tier = 1;
+        this.Pickup = true;
     }
 }
