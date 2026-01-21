@@ -561,4 +561,4 @@ public static ItemStack GetRecipeItem() {
 public static Integer GetId(ItemStack bag) {
     return ItemHandler.getTagInt(bag, ItemHandler.FishBagId);
 }
-
+}
