@@ -77,15 +77,15 @@ public class FishBag {
         bagItem = createOrUpdateBagItem(bagItem, getBagName(), GenerateLore());
     }
 
-    public String getBagName() {
-        return switch(tier) {
-            case 1 -> Formatting.GetLanguageString("Equipment.Fish Bag.tier1Title");
-            case 2 -> Formatting.GetLanguageString("Equipment.Fish Bag.tier2Title");
-            case 3 -> Formatting.GetLanguageString("Equipment.Fish Bag.tier3Title");
-            case 4 -> Formatting.GetLanguageString("Equipment.Fish Bag.tier4Title");
-            case 5 -> Formatting.GetLanguageString("Equipment.Fish Bag.tier5Title");
-            default -> "Error Bag: " + tier;
-        };
+public String getBagName() {
+        switch(tier) {
+            case 1: return Formatting.GetLanguageString("Equipment.Fish Bag.tier1Title");
+            case 2: return Formatting.GetLanguageString("Equipment.Fish Bag.tier2Title");
+            case 3: return Formatting.GetLanguageString("Equipment.Fish Bag.tier3Title");
+            case 4: return Formatting.GetLanguageString("Equipment.Fish Bag.tier4Title");
+            case 5: return Formatting.GetLanguageString("Equipment.Fish Bag.tier5Title");
+            default: return "Error Bag: " + tier;
+        }
     }
 
     public int getAmount() { return amount; }
@@ -264,33 +264,31 @@ public class FishBag {
         return item;
     }
 
-    private boolean TryUpgrade(ItemStack item) {
+private boolean TryUpgrade(ItemStack item) {
         if (!isFull()) return false;
 
         switch (item.getType()) {
-            case IRON_BLOCK -> {
+            case IRON_BLOCK:
                 if (tier != 1) return false;
                 tier = 2;
-            }
-            case GOLD_BLOCK -> {
+                break;
+            case GOLD_BLOCK:
                 if (tier != 2) return false;
                 tier = 3;
-            }
-            case DIAMOND_BLOCK -> {
+                break;
+            case DIAMOND_BLOCK:
                 if (tier != 3) return false;
                 tier = 4;
-            }
-            case NETHERITE_BLOCK -> {
+                break;
+            case NETHERITE_BLOCK:
                 if (tier != 4) return false;
                 tier = 5;
-            }
-            default -> {
+                break;
+            default:
                 return false;
-            }
         }
 
         item.setAmount(item.getAmount() - 1);
-
         Database.FishBags.Update(Id, "tier", tier);
         UpdateBagItem();
         return true;
