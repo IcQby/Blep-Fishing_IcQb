@@ -24,27 +24,30 @@ public class ClaimRewardsBtn extends MenuButton {
         this.player = player;
     }
 
-    @Override
-    public ItemStack buildItemStack(Player player) {
-        ItemStack item = new ItemStack(Material.DIAMOND);
-        ItemMeta m = item.getItemMeta();
-        assert m != null;
+@Override
+public ItemStack buildItemStack(Player player) {
+    ItemStack item = new ItemStack(Material.DIAMOND);
+    ItemMeta m = item.getItemMeta();
+    if (m == null) return item;
 
-        m.addEnchant(Enchantment.FORTUNE, 1, true);
-        m.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+    // Cosmetic glow
+    m.addUnsafeEnchantment(Enchantment.FORTUNE, 1);
+    m.addItemFlags(ItemFlag.HIDE_ENCHANTS);
 
-        List<String> lore = new ArrayList<>();
+    // Display name using Adventure Component
+    m.displayName(Formatting.nameHandler("UI.Player.Buttons.Base.Claim Rewards.name"));
 
-        lore.add(Formatting.GetLanguageString("UI.Player.Buttons.Base.Claim Rewards.lore")
-                .replace("{amount}",
-                        String.valueOf(Database.Rewards.GetTotalRewards(player.getUniqueId().toString()))));
+    // Lore
+    List<String> lore = new ArrayList<>();
+    lore.add(Formatting.GetLanguageString("UI.Player.Buttons.Base.Claim Rewards.lore")
+            .replace("{amount}",
+                    String.valueOf(Database.Rewards.GetTotalRewards(player.getUniqueId().toString()))));
+    m.lore(lore);
 
-        m.setLore(lore);
-        m.setDisplayName(Formatting.GetLanguageString("UI.Player.Buttons.Base.Claim Rewards.name"));
-        item.setItemMeta(m);
+    item.setItemMeta(m);
+    return item;
+}
 
-        return item;
-    }
 
     @Override
     protected void click_left() {
