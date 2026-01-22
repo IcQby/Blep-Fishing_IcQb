@@ -26,7 +26,7 @@
     <repository>
       <id>github</id>
       <name>Public Releases</name>
-      <url>https://maven.pkg.github.com/IcQby/Blep-Fishing_IcQby/</url>
+      <url>https://maven.pkg.github.com/IcQby/</url>
     </repository>
   </distributionManagement>
 
