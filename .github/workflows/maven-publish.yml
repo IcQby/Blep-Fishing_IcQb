@@ -49,7 +49,7 @@ jobs:
 
       # 6️⃣ Upload the JAR artifact for easy download
       - name: Upload compiled JAR
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: BlepFishing-JAR
           path: target/*.jar
