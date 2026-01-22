@@ -216,7 +216,8 @@ public class FishBag {
         for (int i = 1; i <= (int)barScore; i++) {
             progressBar.append(ChatColor.GREEN).append("|");
         }
-        for (int i = 0; i < 10 - Math.floor(barScore); i++) {
+        for (int i = 0; i < 10 - (int)Math.floor(barScore); i++) {
+
             progressBar.append(ChatColor.WHITE).append("|");
         }
 
