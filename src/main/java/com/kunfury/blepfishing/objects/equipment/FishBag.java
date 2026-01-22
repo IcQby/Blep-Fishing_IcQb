@@ -13,7 +13,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Sound;
-import org.bukkit.enchantments.Enchantment;
+
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
@@ -35,13 +35,32 @@ public class FishBag {
 
     public boolean ConfirmSell;
 
-    public FishBag(){
-        amount = 0;
-        tier = 1;
-        Pickup = true;
+ private FishBag(boolean dummy) {
+    Id = -1;
+    tier = 1;
+    Pickup = true;
+}
 
-        Id = Database.FishBags.Add(this);
+    /**
+ * Validates that this bag still exists in the database.
+ * If it doesn't, removes it from the cache.
+ * @return true if valid, false if bag was deleted
+ */
+private boolean validateBag(Player player) {
+    if (!Database.FishBags.Exists(Id)) {
+        // Remove from cache if present
+        InvalidateCache(Id);
+
+        // Notify player if provided
+        if (player != null) {
+            player.sendMessage(ChatColor.RED + "Your Fish Bag no longer exists!");
+        }
+
+        return false;
     }
+    return true;
+}
+
 
     public FishBag(ResultSet rs) throws SQLException {
         Id = rs.getInt("id");
@@ -52,31 +71,16 @@ public class FishBag {
         RequestUpdate();
     }
 
-    public void Use(Player p, ItemStack bagItem){
-        this.bagItem = bagItem;
-        new FishBagPanel(this, 1).Show(p);
-        p.playSound(p.getLocation(), Sound.ITEM_ARMOR_EQUIP_LEATHER, .3f, 1f);
+   public void UpdateBagItem() {
+    if (bagItem == null) {
+        Utilities.Severe("Tried to update null bag item");
+        return;
     }
 
+  bagItem = createOrUpdateBagItem(bagItem, getBagName(), GenerateLore());
 
-    public void UpdateBagItem(){
-        if(bagItem == null){
-            Utilities.Severe("Tried to update null bag item");
-            return;
-        }
+}
 
-        //Bukkit.broadcastMessage("Updating Bag Item");
-
-        ItemMeta m = bagItem.getItemMeta();
-        assert m != null;
-
-        m.setDisplayName(getBagName());
-
-        m.setLore(GenerateLore());
-        m.getPersistentDataContainer().set(ItemHandler.FishBagId, PersistentDataType.INTEGER, Id);
-
-        bagItem.setItemMeta(m);
-    }
 
     public String getBagName(){
         return switch(tier){
@@ -92,69 +96,151 @@ public class FishBag {
     public int getAmount(){ return amount; }
     public int getTier() { return tier; }
 
-    public void TogglePickup(ItemStack bag, Player player){
-        Pickup = !Pickup;
+public void TogglePickup(ItemStack bag, Player player) {
+    // Toggle the pickup state
+    Pickup = !Pickup;
 
-        Database.FishBags.Update(Id, "pickup", Pickup);
+    // Update the database
+    Database.FishBags.Update(Id, "pickup", Pickup);
 
-        player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
+    // Play a sound for feedback
+    player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1f, 1f);
 
-        if(Pickup){
-            bag.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
-            player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.pickupEnabled"));
-        }else{
-            bag.removeEnchantment(Enchantment.DURABILITY);
-            player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.pickupDisabled"));
-        }
+    // Get the item meta safely
+    ItemMeta meta = bag.getItemMeta();
+    if (meta == null) return;
 
-        player.getInventory().setItemInMainHand(bag);
+    // Always make the bag unbreakable
+    meta.setUnbreakable(true);
+
+    // Update the player with a message
+    if (Pickup) {
+        player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.pickupEnabled"));
+    } else {
+        player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.pickupDisabled"));
     }
 
-    public void FillFromInventory(Player player){
-        int fillAmt = 0;
+    // Apply changes to the bag
+    bag.setItemMeta(meta);
+
+    // Update the player's main hand
+    player.getInventory().setItemInMainHand(bag);
+}
 
 
-        for(var item : player.getInventory().getStorageContents()){
-            if(getAmount() + fillAmt >= getMax()) break;
-            if(item != null && item.getType() == ItemHandler.FishMat && ItemHandler.hasTag(item, ItemHandler.FishIdKey)){
-                if(Deposit(item, player))
-                    fillAmt++;
+public void FillFromInventory(Player player) {
+    if (player == null) return;
+
+    // Validate bag
+    if (!validateBag(player)) return;
+
+    Inventory inv = player.getInventory();
+    if (inv == null) return;
+
+    if (fishList == null) fishList = new ArrayList<>();
+
+    int totalDeposited = 0;
+    int max = getMax(); // cache max size
+    List<ItemStack> toRemove = new ArrayList<>();
+
+    // Always iterate over a copy to avoid ConcurrentModificationException
+    for (ItemStack item : inv.getStorageContents()) {
+        if (item == null) continue;
+        if (isFull()) break; // bag full, stop
+
+        boolean isFish = item.getType() == ItemHandler.FishMat && ItemHandler.hasTag(item, ItemHandler.FishIdKey);
+
+        if (isFish) {
+            int space = max - amount;
+            int toDeposit = Math.min(space, item.getAmount());
+
+            if (toDeposit > 0) {
+                FishObject template = FishObject.GetCaughtFish(ItemHandler.getTagInt(item, ItemHandler.FishIdKey));
+                if (template != null) {
+                    List<FishObject> batch = new ArrayList<>(toDeposit);
+                    for (int i = 0; i < toDeposit; i++) {
+                        FishObject newFish = template.clone();
+                        newFish.setFishBagId(Id);
+                        batch.add(newFish);
+                    }
+                    fishList.addAll(batch);
+
+                    amount = fishList.size();
+                    totalDeposited += toDeposit;
+
+                    if (item.getAmount() == toDeposit) toRemove.add(item);
+                    else item.setAmount(item.getAmount() - toDeposit);
+                }
+            }
+        } else {
+            if (TryUpgrade(item)) {
+                player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1f);
+                totalDeposited++;
             }
         }
-
-        if(fillAmt > 0){
-            player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.addFish")
-                    .replace("{amount}", String.valueOf(fillAmt)));
-        }else{
-            if(getAmount() >= getMax())
-                player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.noSpace"));
-            else
-                player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.noFish"));
-            return;
-        }
-        UpdateBagItem();
     }
 
-    public boolean Deposit(ItemStack item, Player player){
+    toRemove.forEach(inv::remove);
 
-        if (ItemHandler.hasTag(item, ItemHandler.FishIdKey)) {
-            if(isFull())
-                return false;
+    if (totalDeposited > 0) UpdateBagItem();
 
-            FishObject fish = FishObject.GetCaughtFish(ItemHandler.getTagInt(item, ItemHandler.FishIdKey));
-            if(fish == null){
-                Bukkit.getLogger().warning("Null fish found");
-                return false;
-            }
-            AddFish(fish);
-
-            player.getInventory().remove(item);
-            player.playSound(player.getLocation(), Sound.ENTITY_SALMON_FLOP, .25f, .25f);
-            return true;
-        }
-
-        return TryUpgrade(item);
+    if (totalDeposited > 0) {
+        player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.addFish")
+                .replace("{amount}", String.valueOf(totalDeposited)));
+        player.playSound(player.getLocation(), Sound.ENTITY_SALMON_FLOP, 0.25f, 0.25f);
+    } else if (isFull()) {
+        player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.noSpace"));
+    } else {
+        player.sendMessage(Formatting.GetFormattedMessage("Equipment.Fish Bag.noFish"));
     }
+}
+
+public int Deposit(ItemStack item, Player player) {
+    if (item == null) return 0;
+
+    // Validate bag
+    if (!validateBag(player)) return 0;
+
+    // Upgrade if non-fish
+    if (!ItemHandler.hasTag(item, ItemHandler.FishIdKey)) {
+        if (TryUpgrade(item)) {
+            player.playSound(player.getLocation(), Sound.BLOCK_ANVIL_USE, 1f, 1f);
+            return 1; // consumed
+        }
+        return 0;
+    }
+
+    if (isFull()) return 0;
+
+    // Deposit fish (rest of your existing code)
+    FishObject fishTemplate = FishObject.GetCaughtFish(ItemHandler.getTagInt(item, ItemHandler.FishIdKey));
+    if (fishTemplate == null) return 0;
+
+    int space = getMax() - getAmount();
+    int toDeposit = Math.min(space, item.getAmount());
+    if (toDeposit <= 0) return 0;
+
+    List<FishObject> batch = new ArrayList<>(toDeposit);
+    for (int i = 0; i < toDeposit; i++) {
+        FishObject newFish = fishTemplate.clone();
+        newFish.setFishBagId(Id);
+        batch.add(newFish);
+    }
+    fishList.addAll(batch);
+
+    amount = fishList.size();
+    UpdateBagItem();
+
+    int remaining = item.getAmount() - toDeposit;
+    if (remaining > 0) item.setAmount(remaining);
+    else player.getInventory().remove(item);
+
+    player.playSound(player.getLocation(), Sound.ENTITY_SALMON_FLOP, 0.25f, 0.25f);
+
+    return toDeposit;
+}
+
+
 
 
     Map<Integer, Material> upgradeMaterials = Map.of(
@@ -164,6 +250,30 @@ public class FishBag {
             4, Material.NETHERITE_BLOCK
     );
 
+
+private ItemStack createOrUpdateBagItem(ItemStack item, String displayName, List<String> lore) {
+    if (item == null) item = new ItemStack(ItemHandler.BagMat);
+
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return item;
+
+    // Set persistent data
+    meta.getPersistentDataContainer().set(ItemHandler.FishBagId, PersistentDataType.INTEGER, Id);
+
+    // Set display name and lore
+    meta.setDisplayName(displayName);
+    meta.setLore(lore);
+
+    // Custom model + flags
+    meta.setCustomModelData(ItemHandler.BagModelData);
+    meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+    meta.setUnbreakable(true);
+    meta.addItemFlags(ItemFlag.HIDE_UNBREAKABLE);
+
+    item.setItemMeta(meta);
+    return item;
+}
+    
 
     private boolean TryUpgrade(ItemStack item){
         if(!isFull())
@@ -209,27 +319,38 @@ public class FishBag {
         return true;
     }
 
-    public void Withdraw(Player player, FishType type, boolean large, boolean single, int page){
-        var filteredFishList = new ArrayList<>(getFish().stream().filter(f -> Objects.equals(f.TypeId, type.Id)).toList());
-
-        if(!filteredFishList.isEmpty()){
-            int freeSlots = Utilities.getFreeSlots(player.getInventory());
-
-            if(single && freeSlots > 1) freeSlots = 1;
-            else if(freeSlots > filteredFishList.size()) freeSlots = filteredFishList.size();
-            if(large)  Collections.reverse(filteredFishList);
-
-            for(int i = 0; i < freeSlots; i++){
-                FishObject fish = filteredFishList.get(i);
-                RemoveFish(fish);
-                player.getInventory().addItem(fish.CreateItemStack());
-                player.playSound(player.getLocation(), Sound.ENTITY_SALMON_FLOP, .5f, 1f);
-            }
-            UpdateBagItem();
-
-            new FishBagPanel(this, page).Show(player);
-        }
+public void Withdraw(Player player, FishType type, boolean large, boolean single, int page) {
+    // Check if bag exists
+    if (!Database.FishBags.Exists(Id)) {
+        InvalidateCache(Id);
+        player.sendMessage(ChatColor.RED + "Your Fish Bag no longer exists!");
+        return;
     }
+
+    List<FishObject> filteredFishList = new ArrayList<>(
+            getFish().stream()
+                    .filter(f -> Objects.equals(f.TypeId, type.Id))
+                    .toList()
+    );
+
+    if (!filteredFishList.isEmpty()) {
+        int freeSlots = Utilities.getFreeSlots(player.getInventory());
+
+        if (single && freeSlots > 1) freeSlots = 1;
+        else if (freeSlots > filteredFishList.size()) freeSlots = filteredFishList.size();
+        if (large) Collections.reverse(filteredFishList);
+
+        for (int i = 0; i < freeSlots; i++) {
+            FishObject fish = filteredFishList.get(i);
+            RemoveFish(fish);
+            player.getInventory().addItem(fish.CreateItemStack());
+            player.playSound(player.getLocation(), Sound.ENTITY_SALMON_FLOP, 0.5f, 1f);
+        }
+
+        UpdateBagItem();
+        new FishBagPanel(this, page).Show(player);
+    }
+}
 
 
     public ArrayList<String> GenerateLore() {
@@ -243,18 +364,16 @@ public class FishBag {
         double barScore = 0;
 
         if(getAmount() != 0 || maxSize != 0){
-            barScore = 10 * (getAmount() / maxSize);
+            barScore = 10.0 * ((double)getAmount() / maxSize);
         }
 
+     int filledBars = (int) Math.round(10 * ((double) getAmount() / getMax()));
+int emptyBars = 10 - filledBars;
 
-        StringBuilder progressBar = new StringBuilder();
+StringBuilder progressBar = new StringBuilder();
+for (int i = 0; i < filledBars; i++) progressBar.append(ChatColor.GREEN).append("|");
+for (int i = 0; i < emptyBars; i++) progressBar.append(ChatColor.WHITE).append("|");
 
-        for (int i = 1; i <= barScore; i++) {
-            progressBar.append(ChatColor.GREEN + "|");
-        }
-        for (int i = 0; i <  10 - Math.floor(barScore); i++) {
-            progressBar.append(ChatColor.WHITE + "|");
-        }
 
         lore.add(progressBar + " " + Formatting.toBigNumber(amount) + "/" + Formatting.toBigNumber(maxSize));
 
@@ -277,142 +396,169 @@ public class FishBag {
         return lore;
     }
 
-    public int getMax(){
-        //return (10 * tier); //This is for testing purposes to be able to easily upgrade the bag
-        return (int) (16 * Math.pow(8, tier)) * 2;
-    }
+public int getMax() {
+    return (tier >= 1 && tier <= 5) ? 16 * (1 << (3 * tier)) * 2 : 16 * 8 * 2;
+}
 
     public boolean isFull(){
         return getMax() <= amount;
     }
 
-    public void AddFish(FishObject fish){
-        fish.setFishBagId(Id);
-        RequestUpdate();
-    }
-    public void RemoveFish(FishObject fish){
-        fish.setFishBagId(null);
-        RequestUpdate();
-    }
     private List<FishObject> fishList = new ArrayList<>();
     public List<FishObject> getFish(){
         return fishList;
     }
 
-    public void RequestUpdate(){
-        fishList = Database.FishBags.GetAllFish(Id).stream().sorted(Comparator.comparingDouble(FishObject::getScore)).toList();
+// Refreshes the fish list from the database, keeps it sorted
+public void RequestUpdate() {
+    // Get all fish from DB
+    fishList = Database.FishBags.GetAllFish(Id);
+    
+    // Sort by score
+    fishList.sort(Comparator.comparingDouble(FishObject::getScore));
+    
+    // Update amount
+    amount = fishList.size();
+}
 
-        amount = fishList.size();
-        //Bukkit.broadcastMessage("Updated Fish Bag. New Amount: " + amount);
-    }
+// Add a fish to this bag, keeps list sorted immediately
+public void AddFish(FishObject fish) {
+    fish.setFishBagId(Id);
+    fishList.add(fish);
+    
+    // Keep sorted by score
+    fishList.sort(Comparator.comparingDouble(FishObject::getScore));
+    
+    // Update amount
+    amount = fishList.size();
+    
+    // Optionally update the bag item display
+    UpdateBagItem();
+}
 
-    public ItemStack GetItem() {
-        ItemStack item = new ItemStack(ItemHandler.BagMat);
-        ItemMeta itemMeta = item.getItemMeta();
+// Remove a fish from this bag
+public void RemoveFish(FishObject fish) {
+    fish.setFishBagId(null);
+    fishList.remove(fish);
+    
+    // Update amount
+    amount = fishList.size();
+    
+    // Optionally update the bag item display
+    UpdateBagItem();
+}
 
-        assert itemMeta != null;
+// Returns the ItemStack representing this bag with updated name/lore
+public ItemStack GetItem() {
+    return createOrUpdateBagItem(bagItem, getBagName(), GenerateLore());
+}
 
-        itemMeta.getPersistentDataContainer().set(ItemHandler.FishBagId, PersistentDataType.INTEGER, Id);
-        itemMeta.setDisplayName(Formatting.GetLanguageString("Equipment.Fish Bag.tier1Title"));
+///
+/// Static cache and retrieval
+///
+private static final Map<Integer, FishBag> FishBags = new HashMap<>();
 
-        itemMeta.setLore(GenerateLore());
+/**
+ * Get a FishBag by ID, using the cache. Automatically removes deleted bags from cache.
+ */
+public static FishBag GetBag(int bagId) {
+    if (bagId <= 0) return null;
 
-        itemMeta.setCustomModelData(ItemHandler.BagModelData);
-        itemMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-
-
-        item.setItemMeta(itemMeta);
-
-        return  item;
-    }
-
-
-
-
-    ///
-    //Static Methods
-    ///
-    public static FishBag GetBag(int bagId){
-        return Database.FishBags.Get(bagId);
-    }
-
-    private static final HashMap<Integer, FishBag> FishBags = new HashMap<>();
-    public static FishBag GetBag(ItemStack bagItem){
-        if(!ItemHandler.hasTag(bagItem, ItemHandler.FishBagId))
+    // Check cache first
+    FishBag cached = FishBags.get(bagId);
+    if (cached != null) {
+        if (Database.FishBags.Exists(bagId)) return cached;
+        else {
+            // Bag deleted from DB, remove from cache
+            FishBags.remove(bagId);
             return null;
-
-        int bagId = ItemHandler.getTagInt(bagItem, ItemHandler.FishBagId);
-        if(FishBags.containsKey(bagId))
-            return FishBags.get(bagId);
-
-        if(!Database.FishBags.Exists(bagId))
-            return null;
-
-        var bag = Database.FishBags.Get(bagId);
-        FishBags.put(bagId, bag);
-        bag.bagItem = bagItem;
-        return bag;
-    }
-
-    public static FishBag GetBag(Player player){
-        if(!ConfigHandler.instance.baseConfig.getEnableFishBags() || !player.getInventory().contains(ItemHandler.BagMat))
-            return null;
-
-        Inventory inv = player.getInventory();
-        for (var slot : inv){
-            if(!IsBag(slot))
-                continue;
-
-            var bag = GetBag(slot);
-            if(!bag.Pickup || bag.isFull())
-                continue;
-
-            bag.bagItem = slot;
-            return bag;
         }
-        return null;
     }
 
-    public static boolean IsBag(ItemStack bag){
+    // Not cached, fetch from DB
+    if (!Database.FishBags.Exists(bagId)) return null;
 
-        if(bag == null || !bag.hasItemMeta())
-            return false;
+    FishBag bag = Database.FishBags.Get(bagId);
+    if (bag != null) FishBags.put(bagId, bag);
 
-        return bag.getType() == ItemHandler.BagMat
-                && bag.getItemMeta().getPersistentDataContainer().has(ItemHandler.FishBagId, PersistentDataType.INTEGER);
-    }
+    return bag;
+}
 
-    public static ItemStack GetRecipeItem(){
-        ItemStack bag = new ItemStack(ItemHandler.BagMat, 1);
+/**
+ * Get a FishBag from an ItemStack (the bag item). Uses the cache.
+ */
+public static FishBag GetBag(ItemStack bagItem) {
+    if (!IsBag(bagItem)) return null;
 
-        ItemMeta m = bag.getItemMeta();
-        assert m != null;
+    int bagId = ItemHandler.getTagInt(bagItem, ItemHandler.FishBagId);
 
-        PersistentDataContainer dataContainer = m.getPersistentDataContainer();
-        dataContainer.set(ItemHandler.FishBagId, PersistentDataType.INTEGER, -1);
-        m.setDisplayName(Formatting.GetLanguageString("Equipment.Fish Bag.tier1Title"));
+    FishBag bag = GetBag(bagId); // Unified retrieval through cache
+    if (bag != null) bag.bagItem = bagItem; // Keep the reference to the current ItemStack
 
-        List<String> lore = new ArrayList<>();
-        lore.add(Formatting.GetLanguageString("Equipment.Fish Bag.descSmall")); //TODO: Change to dynamic based on size of bag
-        lore.add("");
-        lore.add(Formatting.GetLanguageString("Equipment.Fish Bag.autoPickup"));
-        lore.add(Formatting.GetLanguageString("Equipment.Fish Bag.depositAll"));
-        lore.add(Formatting.GetLanguageString("Equipment.Fish Bag.openBag"));
-        lore.add(Formatting.GetLanguageString("Equipment.Fish Bag.openPanel"));
+    return bag;
+}
 
-        m.setLore(lore);
+/**
+ * Get the first usable FishBag from a player’s inventory.
+ */
+public static FishBag GetBag(Player player) {
+    if (!ConfigHandler.instance.baseConfig.getEnableFishBags() ||
+        !player.getInventory().contains(ItemHandler.BagMat)) return null;
 
-        m.setCustomModelData(ItemHandler.BagModelData);
-        m.addItemFlags(ItemFlag.HIDE_ENCHANTS);
-        bag.setItemMeta(m);
+    for (ItemStack item : player.getInventory().getContents()) {
+        if (!IsBag(item)) continue;
 
-        bag.addUnsafeEnchantment(Enchantment.DURABILITY, 1);
+        FishBag bag = GetBag(item); // Uses cache
+        if (bag == null) continue;
+        if (!bag.Pickup || bag.isFull()) continue;
 
+        bag.bagItem = item;
         return bag;
     }
 
-    public static Integer GetId(ItemStack bag){
-        return ItemHandler.getTagInt(bag, ItemHandler.FishBagId);
-    }
+    return null;
+}
 
+/**
+ * Checks if an ItemStack is a valid FishBag item.
+ */
+public static boolean IsBag(ItemStack bag) {
+    if (bag == null || !bag.hasItemMeta()) return false;
+
+    return bag.getType() == ItemHandler.BagMat &&
+           bag.getItemMeta().getPersistentDataContainer().has(ItemHandler.FishBagId, PersistentDataType.INTEGER);
+}
+
+/**
+ * Optional: manually invalidate a bag from cache (e.g., if deleted from DB)
+ */
+public static void InvalidateCache(int bagId) {
+    FishBags.remove(bagId);
+}
+
+/**
+ * Create a dummy bag item for recipe / display purposes.
+ */
+public static ItemStack GetRecipeItem() {
+    FishBag dummy = new FishBag(); // dummy for ID access if needed
+    return dummy.createOrUpdateBagItem(
+        new ItemStack(ItemHandler.BagMat),
+        Formatting.GetLanguageString("Equipment.Fish Bag.tier1Title"),
+        List.of(
+            Formatting.GetLanguageString("Equipment.Fish Bag.descSmall"),
+            "",
+            Formatting.GetLanguageString("Equipment.Fish Bag.autoPickup"),
+            Formatting.GetLanguageString("Equipment.Fish Bag.depositAll"),
+            Formatting.GetLanguageString("Equipment.Fish Bag.openBag"),
+            Formatting.GetLanguageString("Equipment.Fish Bag.openPanel")
+        )
+    );
+}
+
+/**
+ * Get the bag ID from an ItemStack.
+ */
+public static Integer GetId(ItemStack bag) {
+    return ItemHandler.getTagInt(bag, ItemHandler.FishBagId);
+}
 }
