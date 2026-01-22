@@ -24,4 +24,4 @@ jobs:
         server-password: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Build & Deploy with Maven
-      run: mvn clean deploy
+      run: mvn -X clean deploy
