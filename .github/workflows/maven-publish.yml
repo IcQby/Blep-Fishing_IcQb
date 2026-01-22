@@ -1,8 +1,12 @@
-name: Maven Package
+name: Build & Deploy BlepFishing Plugin
 
+# Trigger on new release creation or push to main branch
 on:
   release:
     types: [created]
+  push:
+    branches:
+      - main
 
 jobs:
   build-and-deploy:
@@ -12,16 +16,40 @@ jobs:
       packages: write
 
     steps:
-    - uses: actions/checkout@v4
+      # 1️⃣ Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-        server-id: github
-        server-username: ${{ github.actor }}
-        server-password: ${{ secrets.GITHUB_TOKEN }}
+      # 2️⃣ Cache Maven dependencies for faster builds
+      - name: Cache Maven dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
 
-    - name: Build & Deploy with Maven
-      run: mvn -X clean deploy
+      # 3️⃣ Setup Java 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          server-id: github                # Matches <id> in POM
+          server-username: ${{ github.actor }}
+          server-password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4️⃣ Build & compile the plugin
+      - name: Build Plugin
+        run: mvn clean package -B
+
+      # 5️⃣ Deploy to GitHub Packages (matches distributionManagement in POM)
+      - name: Deploy to GitHub Packages
+        run: mvn deploy -B
+
+      # 6️⃣ Upload the JAR artifact for easy download
+      - name: Upload compiled JAR
+        uses: actions/upload-artifact@v3
+        with:
+          name: BlepFishing-JAR
+          path: target/*.jar
